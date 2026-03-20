@@ -28,32 +28,39 @@ Available actions:
   {"type":"message","from":"<your name>","to":"<agent name>","content":"<text>"}
   {"type":"spawn_agent","name":"<unique name>","system_prompt":"<full instructions>"}
   {"type":"learn","fact":"<discovered fact all agents should know>"}
+  {"type":"self_evaluate","score":<0.0-10.0>,"feedback":"<honest critique of this run>","lessons":["<lesson1>","<lesson2>"]}
+  {"type":"update_prompt","addon":"<new standing instruction to add permanently to your system prompt>"}
   {"type":"done"}
 
 CRITICAL RULES:
 1. Output MUST be a single valid JSON array. All actions go inside ONE array.
 2. Read ENVIRONMENT SNAPSHOT — use ONLY confirmed available commands.
 3. Read RUNTIME LEARNINGS — treat as facts, never repeat a failed approach.
-4. NEVER use shell for servers or long processes — use shell_background instead.
-5. After shell_background, use shell_wait to verify startup before proceeding.
-6. On failure: read the error, adapt, try differently. Never retry the exact same thing.
-7. Record discoveries with {"type":"learn"} so all agents benefit.
-8. Spawn sub-agents for specialist sub-tasks. Keep agents focused.
-9. {"type":"done"} only when YOUR task is fully complete and verified.
+4. Read PERSISTENT MEMORY — use knowledge from previous runs; build on it, never repeat mistakes.
+5. NEVER use shell for servers or long processes — use shell_background instead.
+6. After shell_background, use shell_wait to verify startup before proceeding.
+7. On failure: read the error, adapt, try differently. Never retry the exact same thing.
+8. Record discoveries with {"type":"learn"} so all agents benefit.
+9. Spawn sub-agents for specialist sub-tasks. Keep agents focused.
+10. Before {"type":"done"}, always emit {"type":"self_evaluate"} with an honest score and lessons.
+11. If you discover a standing improvement for your behaviour, emit {"type":"update_prompt"} — it persists to future runs.
+12. {"type":"done"} only when YOUR task is fully complete and verified.
 """
 
 SUPERVISOR_PROMPT = """
 You are the Supervisor Agent — the master orchestrator of this multi-agent system.
 
 Responsibilities:
-1. Fully analyse the user's goal.
-2. Break it into focused sub-tasks.
+1. Fully analyse the user's goal and the PERSISTENT MEMORY from previous runs.
+2. Break the goal into focused sub-tasks; avoid repeating mistakes from past runs.
 3. Spawn specialist agents for complex sub-tasks (researcher, coder, tester, etc.).
 4. Monitor their progress; reassign tasks if an agent gets stuck.
 5. Verify the final result yourself before declaring done.
 6. You may also execute simple tasks directly without spawning agents.
+7. Before finishing, emit self_evaluate with a score 0-10 and concrete lessons.
+8. If you identify a standing improvement, emit update_prompt so future runs benefit.
 
-Always read the ENVIRONMENT SNAPSHOT before taking any action.
+Always read the ENVIRONMENT SNAPSHOT and PERSISTENT MEMORY before taking any action.
 """
 
 
@@ -82,13 +89,17 @@ class MultiAgentOrchestrator:
         self.active_agents: set = set()
         self.completed_agents: set = set()
         self.stats = {"iterations": 0, "total_actions": 0, "start_time": None}
+        # Collected from self_evaluate / update_prompt actions during this run
+        self.self_evaluations: list[dict] = []
+        self.prompt_updates: list[str] = []
+        self._memory_context: str = ""
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def stop(self):
         self.stop_event.set()
 
-    def run(self, goal: str, env_snapshot: str):
+    def run(self, goal: str, env_snapshot: str, memory_context: str = ""):
         self.stop_event.clear()
         with self.lock:
             self.agents.clear()
@@ -96,6 +107,9 @@ class MultiAgentOrchestrator:
             self.learnings.clear()
             self.active_agents.clear()
             self.completed_agents.clear()
+            self.self_evaluations.clear()
+            self.prompt_updates.clear()
+            self._memory_context = memory_context
             self.stats = {"iterations": 0, "total_actions": 0, "start_time": time.time()}
 
         # Register supervisor
@@ -257,11 +271,12 @@ class MultiAgentOrchestrator:
     def _build_system(self, base: str, env: str) -> str:
         with self.lock:
             learnings = list(self.learnings)
+            memory_ctx = self._memory_context
         ltext = ""
         if learnings:
             ltext = "\n\nRUNTIME LEARNINGS (treat as facts):\n"
             ltext += "\n".join(f"  - {l}" for l in learnings)
-        return base + f"\n\n{env}" + ltext + "\n\n" + AGENT_INSTRUCTIONS
+        return base + f"\n\n{env}" + memory_ctx + ltext + "\n\n" + AGENT_INSTRUCTIONS
 
     def _parse(self, response: str, agent_name: str) -> list[dict]:
         try:
@@ -294,6 +309,10 @@ class MultiAgentOrchestrator:
             return action.get("name", "")
         if t == "learn":
             return action.get("fact", "")
+        if t == "self_evaluate":
+            return f"score={action.get('score','?')}/10"
+        if t == "update_prompt":
+            return action.get("addon", "")[:80]
         if t == "done":
             return "Task complete"
         return ""
@@ -343,6 +362,26 @@ class MultiAgentOrchestrator:
                         self.learnings.append(fact)
                 self._emit("learning", fact=fact)
             return "[learning recorded]"
+        if t == "self_evaluate":
+            score_raw = action.get("score")
+            if score_raw is None:
+                return "[self-evaluate skipped: no score provided]"
+            score = float(score_raw)
+            feedback = action.get("feedback", "")
+            lessons = action.get("lessons", [])
+            eval_data = {"score": score, "feedback": feedback, "lessons": lessons}
+            with self.lock:
+                self.self_evaluations.append(eval_data)
+            self._emit("self_evaluate", agent=agent_name, score=score,
+                       feedback=feedback, lessons=lessons)
+            return f"[self-evaluation recorded: score={score}/10]"
+        if t == "update_prompt":
+            addon = action.get("addon", "").strip()
+            if addon:
+                with self.lock:
+                    self.prompt_updates.append(addon)
+                self._emit("prompt_update", agent=agent_name, addon=addon)
+            return "[prompt update recorded]"
         if t == "done":
             return "__DONE__"
         return f"unknown action: {t}"
