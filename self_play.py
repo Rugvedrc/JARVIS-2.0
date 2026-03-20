@@ -32,7 +32,7 @@ RESET  = "\033[0m"
 
 def _bar(score: float, width: int = 20) -> str:
     filled = round(score / 10 * width)
-    return "[" + "█" * filled + "░" * (width - filled) + f"] {score:.1f}/10"
+    return "[" + "█" * filled + "░" * (width - filled) + f"] {score:.1f}/10 (objective)"
 
 
 def _event_callback(event: dict):
@@ -72,16 +72,21 @@ def _event_callback(event: dict):
         print(f"  {YELLOW}  📚 LEARNED: {event['fact']}{RESET}")
 
     elif t == "self_evaluate":
-        score = event.get("score", 0)
         feedback = event.get("feedback", "")
         lessons = event.get("lessons", [])
-        bar = _bar(score)
-        colour = GREEN if score >= 7 else (YELLOW if score >= 4 else RED)
-        print(f"\n  {colour}  🧠 SELF-EVAL {bar}{RESET}")
+        print(f"\n  {YELLOW}  🧠 SELF-REFLECTION (agent: {event.get('agent','?')}){RESET}")
         if feedback:
             print(f"     feedback: {feedback[:200]}")
         for ls in lessons[:3]:
             print(f"     lesson  : {ls}")
+
+    elif t == "validation_result":
+        passed = event.get("passed", True)
+        reason = event.get("reason", "")
+        atype = event.get("action_type", "")
+        colour = GREEN if passed else RED
+        emoji = "✓" if passed else "✗"
+        print(f"    {colour}  [VALIDATE {emoji}] {atype}: {reason[:120]}{RESET}")
 
     elif t == "prompt_update":
         print(f"  {CYAN}  📝 PROMPT UPDATE: {event.get('addon','')[:120]}{RESET}")
@@ -106,14 +111,17 @@ def _event_callback(event: dict):
         print(f"  {RED}  [PARSE ERROR] {event.get('preview','')[:200]}{RESET}")
 
     elif t == "cycle_complete":
-        score = event.get("score")
+        score = event.get("objective_score")
         bar_str = _bar(score) if score is not None else "N/A"
         colour = GREEN if (score or 0) >= 7 else (YELLOW if (score or 0) >= 4 else RED)
         print(f"\n{BOLD}  ── Cycle #{event.get('run_id')} complete ──{RESET}")
         print(f"  Score   : {colour}{bar_str}{RESET}")
+        print(f"  Metrics : {event.get('metrics_summary', '')}")
         print(f"  Trend   : {event.get('trend','?')}")
-        if event.get("prompt_updates"):
-            print(f"  Prompt updates this run: {len(event['prompt_updates'])}")
+        n_instr = event.get("prompt_instructions_count", 0)
+        print(f"  Prompt instructions stored: {n_instr}")
+        for pa in event.get("prompt_actions", []):
+            print(f"    {CYAN}  ↳ {pa}{RESET}")
         print()
 
 
@@ -123,26 +131,32 @@ def _print_final_summary(summaries: list[dict], memory: PersistentMemory):
     print(f"\n{BOLD}{'═'*70}")
     print("  SELF-PLAY COMPLETE — SUMMARY")
     print(f"{'═'*70}{RESET}")
-    print(f"  {'RUN':<5} {'SCORE':>7}  {'ITERS':>5}  {'ACTIONS':>7}  {'SEC':>6}  GOAL")
-    print(f"  {'─'*5} {'─'*7}  {'─'*5}  {'─'*7}  {'─'*6}  {'─'*40}")
+    print(f"  {'RUN':<5} {'SCORE':>7}  {'PASS%':>6}  {'ITERS':>5}  {'SEC':>6}  GOAL")
+    print(f"  {'─'*5} {'─'*7}  {'─'*6}  {'─'*5}  {'─'*6}  {'─'*40}")
     for s in summaries:
-        score_str = f"{s['score']:.1f}" if s.get("score") is not None else "  N/A"
+        score = s.get("objective_score")
+        score_str = f"{score:.1f}" if score is not None else "  N/A"
+        m = s.get("metrics", {})
+        total_sh = m.get("shell_passed", 0) + m.get("shell_failed", 0)
+        pass_pct = f"{100*m.get('shell_passed',0)//total_sh}%" if total_sh else "  N/A"
         ok = "✓" if s["success"] else "✗"
         goal_short = s["goal"][:40]
         print(
-            f"  {ok} #{s['run_id']:<3} {score_str:>7}  {s['iterations']:>5}  "
-            f"{s['total_actions']:>7}  {s['duration']:>6}s  {goal_short}"
+            f"  {ok} #{s['run_id']:<3} {score_str:>7}  {pass_pct:>6}  {s['iterations']:>5}  "
+            f"{s['duration']:>6}s  {goal_short}"
         )
 
     print()
-    print(f"  All-time avg score : {memory.average_score() or 'N/A'}")
-    print(f"  Performance trend  : {memory.recent_trend()}")
-    print(f"  Total runs in memory: {memory.run_count}")
-    print(f"  Global learnings   : {len(memory.global_learnings)}")
-    if memory.system_prompt_addon:
-        print(f"\n  {BOLD}Evolved system prompt addon:{RESET}")
-        for line in memory.system_prompt_addon.splitlines():
-            print(f"    {line}")
+    print(f"  All-time avg score (objective) : {memory.average_score() or 'N/A'}")
+    print(f"  Performance trend              : {memory.recent_trend()}")
+    print(f"  Total runs in memory           : {memory.run_count}")
+    print(f"  Global learnings               : {len(memory.global_learnings)}")
+    print(f"  Prompt instructions stored     : {len(memory.prompt_instructions)}")
+    if memory.prompt_instructions:
+        print(f"\n  {BOLD}Ranked prompt instructions:{RESET}")
+        ordered = sorted(memory.prompt_instructions, key=lambda i: i["score"], reverse=True)
+        for instr in ordered[:10]:
+            print(f"    [{instr['score']:.1f}] {instr['text'][:80]}")
     print(f"{BOLD}{'═'*70}{RESET}\n")
 
 

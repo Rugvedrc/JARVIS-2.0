@@ -26,6 +26,7 @@ from core.memory import (
     save_memory,
     MEMORY_FILE,
 )
+from core.metrics import RunMetrics
 from core.orchestrator import MultiAgentOrchestrator
 
 
@@ -54,8 +55,8 @@ def _generate_goal(memory: PersistentMemory) -> str:
     """Ask the LLM to generate an appropriate next goal based on run history."""
     history_lines = []
     for r in memory.runs[-5:]:
-        score = r.get("self_score")
-        score_str = f" [score {score}/10]" if score is not None else ""
+        score = r.get("objective_score")
+        score_str = f" [objective_score {score}/10]" if score is not None else ""
         history_lines.append(f"  • {r['goal'][:100]}{score_str}")
 
     history_text = (
@@ -82,7 +83,6 @@ def _generate_goal(memory: PersistentMemory) -> str:
         print_fn=lambda *a, **kw: None,
     )
     goal = response.strip().strip('"').strip("'")
-    # Fallback
     if not goal or len(goal) < 5:
         goal = FALLBACK_GOAL
     return goal[:200]
@@ -129,21 +129,19 @@ class SelfImprovementLoop:
         orch.run(goal, env_snapshot, memory_context=memory_context)
         duration = round(time.time() - start, 1)
 
-        # ── Aggregate self-evaluations ────────────────────────────────────────
+        # ── Objective metrics (replaces self-score) ───────────────────────────
+        metrics: RunMetrics = orch.run_metrics
+        metrics.duration = duration
+        objective_score = metrics.compute_score()
+
+        # ── Aggregate self-evaluations (feedback + lessons only) ──────────────
         evals = orch.self_evaluations
-        if evals:
-            avg_score = sum(e["score"] for e in evals) / len(evals)
-            # Combine all feedback and lessons
-            combined_feedback = " | ".join(
-                e["feedback"] for e in evals if e.get("feedback")
-            )
-            all_lessons: list[str] = []
-            for e in evals:
-                all_lessons.extend(e.get("lessons", []))
-        else:
-            avg_score = None
-            combined_feedback = None
-            all_lessons = []
+        combined_feedback = " | ".join(
+            e["feedback"] for e in evals if e.get("feedback")
+        ) or None
+        all_lessons: list[str] = []
+        for e in evals:
+            all_lessons.extend(e.get("lessons", []))
 
         # ── Build run record ──────────────────────────────────────────────────
         record = RunRecord(
@@ -154,7 +152,8 @@ class SelfImprovementLoop:
             total_actions=orch.stats["total_actions"],
             duration=duration,
             success=not orch.stop_event.is_set(),
-            self_score=round(avg_score, 2) if avg_score is not None else None,
+            metrics=metrics.to_dict(),
+            objective_score=objective_score,
             self_feedback=combined_feedback,
             lessons=all_lessons,
         )
@@ -162,9 +161,11 @@ class SelfImprovementLoop:
         # ── Update memory ─────────────────────────────────────────────────────
         self.memory.add_run(record)
 
-        # Apply any prompt updates the agent requested
+        # Apply prompt updates with ranking/dedup/pruning
+        prompt_actions: list[str] = []
         for addon in orch.prompt_updates:
-            self.memory.apply_prompt_update(addon)
+            action_taken = self.memory.apply_prompt_update(addon, run_id=run_id)
+            prompt_actions.append(f"{action_taken}: {addon[:60]}")
 
         # Persist
         save_memory(self.memory, self.memory_path)
@@ -173,15 +174,19 @@ class SelfImprovementLoop:
             "run_id": run_id,
             "goal": goal,
             "success": record.success,
-            "score": record.self_score,
+            "objective_score": objective_score,
+            "metrics": metrics.to_dict(),
+            "metrics_summary": metrics.summary_str(),
             "feedback": combined_feedback,
             "lessons": all_lessons,
             "iterations": record.iterations,
             "total_actions": record.total_actions,
             "duration": duration,
             "prompt_updates": orch.prompt_updates,
+            "prompt_actions": prompt_actions,
             "avg_score_all_time": self.memory.average_score(),
             "trend": self.memory.recent_trend(),
+            "prompt_instructions_count": len(self.memory.prompt_instructions),
         }
 
         self._notify("cycle_complete", **summary)
