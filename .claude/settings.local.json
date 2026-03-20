@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -c \"from core.orchestrator import MultiAgentOrchestrator; from core.environment import discover_environment; print\\(''imports OK''\\)\")"
+    ]
+  }
+}
