@@ -9,7 +9,7 @@ if _env.exists():
             k, v = line.split("=", 1)
             os.environ.setdefault(k.strip(), v.strip().strip('"\''))
 
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "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")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
 BASE_URL       = os.getenv("BASE_URL", "https://integrate.api.nvidia.com/v1/chat/completions")
 MODEL          = os.getenv("MODEL", "mistralai/mistral-small-4-119b-2603")
 MAX_ITERATIONS = int(os.getenv("MAX_ITERATIONS", "30"))

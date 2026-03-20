@@ -5,10 +5,7 @@ import requests
 import platform
 import time
 
-NVIDIA_API_KEY = "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"
-BASE_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-MODEL = "mistralai/mistral-small-4-119b-2603"
-MAX_ITERATIONS = 30
+from config import NVIDIA_API_KEY, BASE_URL, MODEL, MAX_ITERATIONS
 
 # ── Shared state ──────────────────────────────────────────────────────────────
 message_bus: list[dict] = []

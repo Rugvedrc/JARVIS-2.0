@@ -15,9 +15,13 @@ env/
 jarvis_memory.json
 *.tmp
 
-# IDE
+# Environment / secrets
+.env
+
+# IDE / local tooling
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 
