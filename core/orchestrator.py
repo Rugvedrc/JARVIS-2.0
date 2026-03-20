@@ -9,7 +9,9 @@ from typing import Callable, Optional
 
 from config import MAX_ITERATIONS
 from core.llm import llm
+from core.metrics import RunMetrics
 from core.tools import shell, shell_background, shell_wait, file_op
+from core.validator import validate_shell_output, validate_file_write
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -28,32 +30,41 @@ Available actions:
   {"type":"message","from":"<your name>","to":"<agent name>","content":"<text>"}
   {"type":"spawn_agent","name":"<unique name>","system_prompt":"<full instructions>"}
   {"type":"learn","fact":"<discovered fact all agents should know>"}
+  {"type":"self_evaluate","feedback":"<honest written reflection on this run>","lessons":["<lesson1>","<lesson2>"]}
+  {"type":"update_prompt","addon":"<one standing instruction to permanently improve future behavior>"}
   {"type":"done"}
 
 CRITICAL RULES:
 1. Output MUST be a single valid JSON array. All actions go inside ONE array.
 2. Read ENVIRONMENT SNAPSHOT — use ONLY confirmed available commands.
 3. Read RUNTIME LEARNINGS — treat as facts, never repeat a failed approach.
-4. NEVER use shell for servers or long processes — use shell_background instead.
-5. After shell_background, use shell_wait to verify startup before proceeding.
-6. On failure: read the error, adapt, try differently. Never retry the exact same thing.
-7. Record discoveries with {"type":"learn"} so all agents benefit.
-8. Spawn sub-agents for specialist sub-tasks. Keep agents focused.
-9. {"type":"done"} only when YOUR task is fully complete and verified.
+4. Read PERSISTENT MEMORY — use knowledge from previous runs; build on it, never repeat mistakes.
+5. NEVER use shell for servers or long processes — use shell_background instead.
+6. After shell_background, use shell_wait to verify startup before proceeding.
+7. On failure: read the error, adapt, try differently. Never retry the exact same thing.
+8. Record discoveries with {"type":"learn"} so all agents benefit.
+9. Spawn sub-agents for specialist sub-tasks. Keep agents focused.
+10. Before {"type":"done"}, always emit {"type":"self_evaluate"} with honest feedback and concrete lessons.
+    NOTE: do NOT include a score — your performance is measured objectively from execution results.
+11. emit {"type":"update_prompt"} ONLY for a genuinely new standing instruction; the system will
+    deduplicate, rank and prune it automatically — do NOT repeat or contradict existing instructions.
+12. {"type":"done"} only when YOUR task is fully complete and verified.
 """
 
 SUPERVISOR_PROMPT = """
 You are the Supervisor Agent — the master orchestrator of this multi-agent system.
 
 Responsibilities:
-1. Fully analyse the user's goal.
-2. Break it into focused sub-tasks.
+1. Fully analyse the user's goal and the PERSISTENT MEMORY from previous runs.
+2. Break the goal into focused sub-tasks; avoid repeating mistakes from past runs.
 3. Spawn specialist agents for complex sub-tasks (researcher, coder, tester, etc.).
 4. Monitor their progress; reassign tasks if an agent gets stuck.
 5. Verify the final result yourself before declaring done.
 6. You may also execute simple tasks directly without spawning agents.
+7. Before finishing, emit self_evaluate with honest feedback and concrete lessons (no score needed).
+8. If you identify a genuinely new standing improvement, emit update_prompt.
 
-Always read the ENVIRONMENT SNAPSHOT before taking any action.
+Always read the ENVIRONMENT SNAPSHOT and PERSISTENT MEMORY before taking any action.
 """
 
 
@@ -82,13 +93,19 @@ class MultiAgentOrchestrator:
         self.active_agents: set = set()
         self.completed_agents: set = set()
         self.stats = {"iterations": 0, "total_actions": 0, "start_time": None}
+        # Collected from self_evaluate / update_prompt actions during this run
+        self.self_evaluations: list[dict] = []
+        self.prompt_updates: list[str] = []
+        self._memory_context: str = ""
+        # Objective metrics — accumulated during _execute calls
+        self.run_metrics: RunMetrics = RunMetrics()
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
     def stop(self):
         self.stop_event.set()
 
-    def run(self, goal: str, env_snapshot: str):
+    def run(self, goal: str, env_snapshot: str, memory_context: str = ""):
         self.stop_event.clear()
         with self.lock:
             self.agents.clear()
@@ -96,6 +113,10 @@ class MultiAgentOrchestrator:
             self.learnings.clear()
             self.active_agents.clear()
             self.completed_agents.clear()
+            self.self_evaluations.clear()
+            self.prompt_updates.clear()
+            self._memory_context = memory_context
+            self.run_metrics = RunMetrics()
             self.stats = {"iterations": 0, "total_actions": 0, "start_time": time.time()}
 
         # Register supervisor
@@ -152,12 +173,16 @@ class MultiAgentOrchestrator:
                 break
 
         duration = round(time.time() - self.stats["start_time"], 1)
+        with self.lock:
+            self.run_metrics.total_actions = self.stats["total_actions"]
+            self.run_metrics.duration = duration
         self._emit(
             "run_complete",
             success=not self.stop_event.is_set(),
             iterations=self.stats["iterations"],
             actions=self.stats["total_actions"],
             duration=duration,
+            metrics=self.run_metrics.to_dict(),
         )
 
     # ── Internal ───────────────────────────────────────────────────────────────
@@ -257,11 +282,12 @@ class MultiAgentOrchestrator:
     def _build_system(self, base: str, env: str) -> str:
         with self.lock:
             learnings = list(self.learnings)
+            memory_ctx = self._memory_context
         ltext = ""
         if learnings:
             ltext = "\n\nRUNTIME LEARNINGS (treat as facts):\n"
             ltext += "\n".join(f"  - {l}" for l in learnings)
-        return base + f"\n\n{env}" + ltext + "\n\n" + AGENT_INSTRUCTIONS
+        return base + f"\n\n{env}" + memory_ctx + ltext + "\n\n" + AGENT_INSTRUCTIONS
 
     def _parse(self, response: str, agent_name: str) -> list[dict]:
         try:
@@ -294,6 +320,10 @@ class MultiAgentOrchestrator:
             return action.get("name", "")
         if t == "learn":
             return action.get("fact", "")
+        if t == "self_evaluate":
+            return action.get("feedback", "")[:80]
+        if t == "update_prompt":
+            return action.get("addon", "")[:80]
         if t == "done":
             return "Task complete"
         return ""
@@ -309,7 +339,17 @@ class MultiAgentOrchestrator:
                     if fact not in self.learnings:
                         self.learnings.append(fact)
                 self._emit("learning", fact=fact)
-            return result
+            # ── Validator ──────────────────────────────────────────────────
+            vr = validate_shell_output(action["cmd"], result)
+            with self.lock:
+                self.run_metrics.shell_calls += 1
+                if vr.passed:
+                    self.run_metrics.shell_passed += 1
+                else:
+                    self.run_metrics.shell_failed += 1
+            self._emit("validation_result", agent=agent_name, action_type="shell",
+                       passed=vr.passed, reason=vr.reason)
+            return result + "\n" + vr.as_context()
         if t == "shell_background":
             return shell_background(action["cmd"])
         if t == "shell_wait":
@@ -317,7 +357,18 @@ class MultiAgentOrchestrator:
         if t == "file_read":
             return file_op("read", action["path"])
         if t == "file_write":
-            return file_op("write", action["path"], action.get("content", ""))
+            raw = file_op("write", action["path"], action.get("content", ""))
+            # ── Validator ──────────────────────────────────────────────────
+            vr = validate_file_write(action["path"], action.get("content", ""))
+            with self.lock:
+                self.run_metrics.file_writes += 1
+                if vr.passed:
+                    self.run_metrics.files_validated += 1
+                else:
+                    self.run_metrics.validation_errors += 1
+            self._emit("validation_result", agent=agent_name, action_type="file_write",
+                       passed=vr.passed, reason=vr.reason, path=action["path"])
+            return raw + "\n" + vr.as_context()
         if t == "file_list":
             return file_op("list", action.get("path", "."))
         if t == "message":
@@ -343,6 +394,23 @@ class MultiAgentOrchestrator:
                         self.learnings.append(fact)
                 self._emit("learning", fact=fact)
             return "[learning recorded]"
+        if t == "self_evaluate":
+            # Score is intentionally ignored here — objective metrics drive scoring
+            feedback = action.get("feedback", "")
+            lessons = action.get("lessons", [])
+            eval_data = {"feedback": feedback, "lessons": lessons}
+            with self.lock:
+                self.self_evaluations.append(eval_data)
+            self._emit("self_evaluate", agent=agent_name,
+                       feedback=feedback, lessons=lessons)
+            return "[self-evaluation recorded]"
+        if t == "update_prompt":
+            addon = action.get("addon", "").strip()
+            if addon:
+                with self.lock:
+                    self.prompt_updates.append(addon)
+                self._emit("prompt_update", agent=agent_name, addon=addon)
+            return "[prompt update recorded]"
         if t == "done":
             return "__DONE__"
         return f"unknown action: {t}"
