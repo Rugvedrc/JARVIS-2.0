@@ -1,24 +1,24 @@
 import json
 import time
 import requests
-from config import NVIDIA_API_KEY, BASE_URL, MODEL, MAX_TOKENS, LLM_TEMPERATURE
+import config
 
 
 def llm(system: str, messages: list[dict], print_fn=print) -> str:
     payload = {
-        "model": MODEL,
+        "model": config.MODEL,
         "messages": [{"role": "system", "content": system}] + messages,
-        "temperature": LLM_TEMPERATURE,
-        "max_tokens": MAX_TOKENS,
+        "temperature": config.LLM_TEMPERATURE,
+        "max_tokens": config.MAX_TOKENS,
         "stream": True,
     }
 
     for attempt in range(3):
         try:
             r = requests.post(
-                BASE_URL,
+                config.BASE_URL,
                 headers={
-                    "Authorization": f"Bearer {NVIDIA_API_KEY}",
+                    "Authorization": f"Bearer {config.NVIDIA_API_KEY}",
                     "Accept": "text/event-stream",
                     "Content-Type": "application/json",
                 },

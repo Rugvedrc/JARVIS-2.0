@@ -1,532 +1,1124 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Agent Nexus</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#080811;--surface:#0e0e1c;--surface2:#141428;--border:#1e1e38;
-  --text:#cdd6f4;--dim:#7f849c;--muted:#45475a;
-  --purple:#cba6f7;--blue:#89b4fa;--cyan:#89dceb;--green:#a6e3a1;
-  --yellow:#f9e2af;--peach:#fab387;--red:#f38ba8;--pink:#f5c2e7;
-  --accent:#7c3aed;
-}
-body{background:var(--bg);color:var(--text);font-family:'Consolas','Cascadia Code','JetBrains Mono',monospace;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agent Nexus — Multi-Agent AI Orchestrator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* ── Header ── */
-#hdr{display:flex;align-items:center;gap:14px;padding:9px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;z-index:10}
-.logo{font-size:15px;font-weight:bold;color:var(--purple);letter-spacing:2px}
-.logo b{color:var(--cyan)}
-#ws-badge{display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);font-size:11px;color:var(--dim);transition:all .3s}
-#ws-badge.live{color:var(--green);border-color:#a6e3a130}
-#ws-badge.live .dot{background:var(--green);box-shadow:0 0 6px var(--green)}
-#ws-badge.err{color:var(--red);border-color:#f38ba830}
-#ws-badge.err .dot{background:var(--red)}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
-.stats{display:flex;gap:18px;margin-left:auto;font-size:11px;color:var(--dim)}
-.stat b{color:var(--text)}
-.spin{display:none;width:11px;height:11px;border:2px solid var(--purple);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
-body.running .spin{display:inline-block}
-@keyframes spin{to{transform:rotate(360deg)}}
+    body {
+      font-family: "Inter", sans-serif;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      color: #1a202c;
+      height: 100vh;
+      overflow: hidden;
+    }
 
-/* ── Layout ── */
-#main{display:flex;flex:1;overflow:hidden}
-.panel{display:flex;flex-direction:column;overflow:hidden}
-#ap{width:220px;flex-shrink:0;border-right:1px solid var(--border)}
-#fp{flex:1}
-#cp{width:265px;flex-shrink:0;border-left:1px solid var(--border);overflow-y:auto}
-.ph{padding:7px 12px;background:var(--surface);border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--dim);font-weight:bold;display:flex;align-items:center;flex-shrink:0}
-.ph .badge{background:var(--surface2);border:1px solid var(--border);padding:1px 7px;border-radius:999px;font-size:10px;color:var(--purple);margin-left:auto}
+    #bg {
+      position: fixed; inset: 0;
+      background-image: radial-gradient(circle at 1px 1px, #d1d5db 1px, transparent 1px);
+      background-size: 40px 40px;
+      z-index: 0; opacity: 0.3;
+    }
 
-/* ── Agent cards ── */
-#al{flex:1;overflow-y:auto;padding:7px;display:flex;flex-direction:column;gap:5px}
-.ac{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:9px 11px;transition:border-color .25s,box-shadow .25s;animation:slideIn .2s ease-out}
-@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
-.ac.thinking{border-color:#f9e2af30;box-shadow:0 0 12px #f9e2af08}
-.ac.executing{border-color:#89b4fa30;box-shadow:0 0 12px #89b4fa08}
-.ac.done{border-color:#a6e3a130}
-.ac.error{border-color:#f38ba830}
-.an{font-weight:bold;font-size:12px;display:flex;align-items:center;gap:6px;margin-bottom:5px}
-.sd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.s-idle .sd{background:var(--muted)}
-.s-thinking .sd{background:var(--yellow);animation:pulse 1s ease-in-out infinite}
-.s-executing .sd{background:var(--blue);animation:glow-blue 1s ease-in-out infinite}
-.s-done .sd{background:var(--green)}
-.s-error .sd{background:var(--red)}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.75)}}
-@keyframes glow-blue{0%,100%{box-shadow:0 0 4px var(--blue)}50%{box-shadow:0 0 10px var(--blue)}}
-.ast{font-size:11px;color:var(--dim);margin-bottom:3px}
-.s-thinking .ast{color:var(--yellow)}
-.s-executing .ast{color:var(--blue)}
-.s-done .ast{color:var(--green)}
-.ainfo{font-size:10px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
-.cur-action{color:var(--blue);font-size:10px;font-style:italic;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.no-agents{color:var(--muted);font-size:11px;text-align:center;padding:24px 10px;line-height:1.7}
+    /* ── SCREENS ── */
+    .screen {
+      position: fixed; inset: 0; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      transition: opacity 0.5s ease;
+      background: radial-gradient(ellipse at center, rgba(255,255,255,0.9) 0%, rgba(220,224,231,0.8) 100%);
+    }
+    .screen.hide { opacity: 0; pointer-events: none; }
 
-/* ── Feed ── */
-#filters{display:flex;gap:4px;padding:6px 9px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap}
-.fb{padding:2px 9px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--dim);font-size:10px;font-family:inherit;cursor:pointer;transition:all .15s;letter-spacing:.3px}
-.fb:hover{border-color:var(--purple);color:var(--purple)}
-.fb.on{background:var(--purple);border-color:var(--purple);color:#0a0010;font-weight:bold}
-#ascroll{margin-left:auto;padding:2px 9px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--dim);font-size:10px;font-family:inherit;cursor:pointer;transition:all .15s}
-#ascroll.on{border-color:var(--cyan);color:var(--cyan)}
-#log{flex:1;overflow-y:auto;padding:7px;display:flex;flex-direction:column;gap:4px}
-.le{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 10px;animation:fadeUp .2s ease-out;font-size:12px}
-@keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
-.le:hover{border-color:#2d2d58}
-.lm{display:flex;align-items:center;gap:7px;margin-bottom:4px;flex-wrap:wrap}
-.lts{color:var(--muted);font-size:10px;flex-shrink:0}
-.lag{color:var(--purple);font-size:11px;font-weight:bold}
-.lt{padding:1px 7px;border-radius:3px;font-size:10px;font-weight:bold;letter-spacing:.3px}
-.t-shell{background:#89b4fa18;color:var(--blue);border:1px solid #89b4fa28}
-.t-shell_background,.t-shell_wait{background:#89b4fa0e;color:#89b4fa88;border:1px solid #89b4fa18}
-.t-file_read,.t-file_write,.t-file_list{background:#fab38718;color:var(--peach);border:1px solid #fab38728}
-.t-spawn_agent{background:#cba6f718;color:var(--purple);border:1px solid #cba6f728}
-.t-message{background:#f5c2e718;color:var(--pink);border:1px solid #f5c2e728}
-.t-learn{background:#a6e3a118;color:var(--green);border:1px solid #a6e3a128}
-.t-done{background:#a6e3a118;color:var(--green);border:1px solid #a6e3a128}
-.t-iteration{background:transparent;color:var(--muted);border:1px solid var(--border)}
-.t-error,.t-parse_error{background:#f38ba818;color:var(--red);border:1px solid #f38ba828}
-.t-system{background:transparent;color:var(--dim);border:1px solid var(--border)}
-.lcmd{color:var(--text);word-break:break-all;margin-bottom:3px;line-height:1.4}
-.lres{color:var(--dim);white-space:pre-wrap;word-break:break-all;max-height:80px;overflow:hidden;font-size:11px;line-height:1.4;border-top:1px solid var(--border);padding-top:4px;margin-top:2px}
-.lres.open{max-height:none}
-.ltog{color:var(--blue);cursor:pointer;font-size:10px;margin-top:3px;display:inline-block;user-select:none}
-.ltog:hover{text-decoration:underline}
-.empty{color:var(--muted);font-size:11px;text-align:center;padding:30px 0}
+    /* ── SETUP CARD ── */
+    .setup-card {
+      width: min(520px, 92vw);
+      background: white;
+      padding: 48px 44px;
+      border-radius: 24px;
+      box-shadow: 0 30px 100px rgba(0,0,0,0.15);
+      z-index: 11;
+    }
+    .setup-logo {
+      text-align: center; margin-bottom: 28px;
+    }
+    .setup-logo-icon {
+      width: 72px; height: 72px; border-radius: 20px;
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 32px; color: white; margin-bottom: 16px;
+    }
+    .setup-logo h1 {
+      font-size: 28px; font-weight: 900;
+      background: linear-gradient(120deg, #6366f1 0%, #3b82f6 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .setup-logo p { font-size: 13px; color: #9ca3af; margin-top: 6px; }
 
-/* ── Control ── */
-.cs{padding:12px}
-.ct{font-size:10px;letter-spacing:1.5px;color:var(--dim);font-weight:bold;margin-bottom:8px}
-#gi{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;font-size:12px;padding:9px;resize:vertical;min-height:90px;outline:none;transition:border-color .2s;line-height:1.5}
-#gi:focus{border-color:var(--purple)}
-#gi::placeholder{color:var(--muted)}
-.btn{width:100%;padding:9px;border-radius:6px;border:none;font-family:inherit;font-size:12px;font-weight:bold;cursor:pointer;letter-spacing:.4px;transition:all .15s;margin-top:7px}
-.btn-go{background:linear-gradient(135deg,var(--accent),#a855f7);color:#fff}
-.btn-go:hover{filter:brightness(1.1);box-shadow:0 0 18px #7c3aed40}
-.btn-go:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
-.btn-stop{background:transparent;color:var(--red);border:1px solid #f38ba840;display:none}
-.btn-stop:hover{background:#f38ba815}
-.btn-stop:disabled{opacity:.3;cursor:not-allowed}
-body.running .btn-go{display:none}
-body.running .btn-stop{display:block}
-hr.div{border:none;border-top:1px solid var(--border);margin:2px 0}
-#ll{display:flex;flex-direction:column;gap:4px}
-.li{background:var(--surface);border:1px solid #a6e3a118;border-radius:4px;padding:6px 8px;font-size:11px;color:var(--green);animation:fadeUp .2s;word-break:break-word}
-#sinfo{color:var(--dim);font-size:11px;line-height:2}
-#sinfo span{color:var(--muted)}
-#sinfo .val{color:var(--text)}
-#hint{color:var(--muted);font-size:10px;margin-top:5px;line-height:1.6}
+    .form-group { margin-bottom: 20px; }
+    .form-label {
+      display: block; font-size: 12px; font-weight: 700;
+      color: #374151; margin-bottom: 8px; letter-spacing: 0.3px;
+    }
+    .form-input, .form-select {
+      width: 100%; padding: 11px 14px;
+      border: 1.5px solid #e5e7eb; border-radius: 10px;
+      font-size: 13px; font-family: inherit; color: #1f2937;
+      background: #f9fafb; outline: none; transition: border-color 0.2s;
+    }
+    .form-input:focus, .form-select:focus { border-color: #6366f1; background: white; }
+    .form-input.key { font-family: "JetBrains Mono", monospace; font-size: 12px; }
+    .form-hint { font-size: 11px; color: #9ca3af; margin-top: 5px; }
+    .form-hint a { color: #6366f1; text-decoration: none; }
 
-/* ── Scrollbars ── */
-::-webkit-scrollbar{width:5px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+    .btn-setup {
+      width: 100%; padding: 13px;
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white; border: none; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s; display: flex; align-items: center;
+      justify-content: center; gap: 8px;
+    }
+    .btn-setup:hover { background: linear-gradient(135deg, #4f46e5, #4338ca); transform: translateY(-1px); }
+    .btn-setup:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
-/* ── Run banner ── */
-#banner{display:none;padding:8px 18px;font-size:11px;font-weight:bold;letter-spacing:.5px;text-align:center;flex-shrink:0}
-#banner.success{background:#a6e3a115;color:var(--green);border-bottom:1px solid #a6e3a130}
-#banner.stopped{background:#f38ba815;color:var(--red);border-bottom:1px solid #f38ba830}
-</style>
+    .setup-err {
+      background: #fee2e2; border: 1px solid #fecaca;
+      border-radius: 8px; padding: 10px 14px;
+      font-size: 12px; color: #991b1b; margin-top: 14px;
+      display: none;
+    }
+    .setup-err.show { display: block; }
+
+    /* ── LANDING CARD ── */
+    .land-wrap {
+      width: min(900px, 92vw);
+      background: white; padding: 60px 52px;
+      border-radius: 28px; box-shadow: 0 30px 100px rgba(0,0,0,0.15);
+      z-index: 11; text-align: center;
+    }
+
+    .land-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 20px; border: 1.5px solid #e5e7eb;
+      border-radius: 999px; background: #f9fafb;
+      margin-bottom: 20px; font-size: 11px; font-weight: 600;
+      letter-spacing: 0.5px; color: #6366f1;
+    }
+
+    .land-h {
+      font-size: 72px; font-weight: 900; margin-bottom: 12px;
+      background: linear-gradient(120deg, #6366f1 0%, #3b82f6 60%, #0ea5e9 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .land-p { font-size: 18px; color: #6b7280; margin-bottom: 36px; line-height: 1.7; max-width: 650px; margin-left: auto; margin-right: auto; }
+
+    .land-settings-btn {
+      position: absolute; top: 24px; right: 28px;
+      background: white; border: 1.5px solid #e5e7eb;
+      border-radius: 8px; padding: 8px 14px; font-size: 12px;
+      cursor: pointer; color: #6b7280; display: flex; align-items: center;
+      gap: 6px; font-weight: 500; transition: all 0.2s;
+    }
+    .land-settings-btn:hover { border-color: #6366f1; color: #6366f1; background: #f0f4ff; }
+
+    .shell {
+      background: white; border: 2px solid #e5e7eb;
+      border-radius: 16px; overflow: hidden;
+      margin-bottom: 28px; box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+    }
+    .shell-top {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 18px; border-bottom: 1px solid #f3f4f6;
+      background: #fafbfc; font-size: 12px; color: #9ca3af; font-weight: 500;
+    }
+    .shell-top span:first-child { flex: 1; }
+    #ta {
+      width: 100%; min-height: 160px; border: none; padding: 18px 20px;
+      font-family: "JetBrains Mono", monospace; font-size: 14px;
+      resize: none; color: #1f2937; line-height: 1.6;
+    }
+    #ta::placeholder { color: #d1d5db; font-size: 13px; }
+    #ta:focus { outline: none; }
+    .shell-bot {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px; border-top: 1px solid #f3f4f6;
+      background: #fafbfc; font-size: 12px; color: #6b7280;
+    }
+    .btn-launch {
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white; border: none; padding: 11px 28px;
+      border-radius: 10px; font-weight: 600; cursor: pointer;
+      font-size: 14px; transition: all 0.3s;
+      display: flex; align-items: center; gap: 8px;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+    .btn-launch:hover { background: linear-gradient(135deg, #4f46e5, #4338ca); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4); }
+
+    .chips { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .chip {
+      padding: 9px 16px; border: 1.5px solid #e5e7eb;
+      border-radius: 24px; background: white; cursor: pointer;
+      font-size: 12px; transition: all 0.2s;
+      display: flex; align-items: center; gap: 6px;
+      font-weight: 500; color: #6b7280;
+    }
+    .chip:hover, .chip.on { border-color: #6366f1; background: #f0f4ff; color: #6366f1; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15); }
+
+    /* ── APP ── */
+    #app {
+      position: fixed; inset: 0; z-index: 5;
+      display: flex; flex-direction: column;
+      opacity: 0; pointer-events: none; transition: opacity 0.6s ease;
+    }
+    #app.in { opacity: 1; pointer-events: all; }
+
+    #bar {
+      height: 60px; display: flex; align-items: center; gap: 18px;
+      padding: 0 24px; background: white;
+      border-bottom: 2px solid #e5e7eb; flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+    .bar-brand {
+      font-family: "JetBrains Mono", monospace; font-weight: 800;
+      font-size: 15px;
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      display: flex; align-items: center; gap: 8px; white-space: nowrap;
+    }
+    .bar-goal {
+      flex: 1; max-width: 400px; padding: 7px 14px;
+      background: #f9fafb; border: 1.5px solid #e5e7eb;
+      border-radius: 8px; font-size: 11px; color: #6b7280;
+      font-family: "JetBrains Mono", monospace;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .bar-kpis { display: flex; gap: 20px; font-size: 11px; }
+    .kpi { flex: 0 0 auto; }
+    .kpi-v { font-weight: 800; font-size: 18px; color: #6366f1; font-family: "JetBrains Mono", monospace; }
+    .kpi-l { font-size: 9px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+
+    .ws-tag {
+      padding: 5px 12px; background: #fee2e2; border: 1px solid #fecaca;
+      border-radius: 8px; font-size: 11px; color: #991b1b; font-weight: 600;
+      font-family: "JetBrains Mono", monospace;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .ws-tag.live { background: #dcfce7; border-color: #bbf7d0; color: #166534; }
+    .ws-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    .bar-btn {
+      padding: 7px 14px; background: white; border: 1.5px solid #e5e7eb;
+      border-radius: 8px; font-size: 12px; cursor: pointer;
+      transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+      font-weight: 500; color: #6b7280;
+    }
+    .bar-btn:hover { border-color: #6366f1; color: #6366f1; background: #f0f4ff; }
+    .bar-btn.danger { color: #dc2626; display: none; }
+    .bar-btn.danger.on { display: flex; }
+    .bar-btn.danger:hover { border-color: #dc2626; background: #fee2e2; color: #dc2626; }
+
+    #workspace { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── ORCHESTRATION ── */
+    #orch { flex: 1; display: flex; flex-direction: column; background: #f9fafb; overflow: hidden; min-width: 0; }
+    .orch-hd {
+      padding: 14px 22px; background: white;
+      border-bottom: 1.5px solid #e5e7eb;
+      font-size: 11px; font-weight: 700; color: #6b7280;
+      display: flex; justify-content: space-between; align-items: center;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .legend { display: flex; gap: 14px; font-size: 11px; }
+    .lg { display: flex; align-items: center; gap: 5px; color: #9ca3af; }
+    .lg-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+    #graph {
+      flex: 1; overflow-y: auto; overflow-x: auto;
+      padding: 44px 28px; display: flex; flex-direction: column;
+      align-items: center; gap: 80px; position: relative; min-width: 0;
+    }
+    #graph-svg {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 0; overflow: visible;
+    }
+    .graph-row {
+      display: flex; justify-content: center; gap: 24px;
+      width: max-content; min-width: 100%;
+      position: relative; z-index: 2; flex-wrap: wrap;
+    }
+    .graph-empty {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      color: #d1d5db; gap: 10px; font-size: 14px;
+    }
+    .graph-empty i { font-size: 44px; opacity: 0.4; }
+
+    /* ── NODE CARD ── */
+    .node { position: relative; }
+    .node-card {
+      background: white; border-radius: 16px; padding: 18px 20px;
+      width: 210px; min-width: 210px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+      border: 2px solid #e5e7eb; transition: all 0.3s;
+    }
+    .node-card.is-sup { border-color: #6366f1; box-shadow: 0 4px 24px rgba(99,102,241,0.2); }
+    .node-card.thinking { border-color: #f59e0b; box-shadow: 0 4px 20px rgba(245,158,11,0.2); }
+    .node-card.executing { border-color: #3b82f6; box-shadow: 0 4px 20px rgba(59,130,246,0.2); }
+    .node-card.done { border-color: #10b981; box-shadow: 0 4px 20px rgba(16,185,129,0.15); }
+    .nc-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+    .nc-icon {
+      width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(135deg, #6366f1, #3b82f6);
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 14px; flex-shrink: 0;
+    }
+    .nc-info { flex: 1; min-width: 0; }
+    .nc-name { font-weight: 700; font-size: 12px; color: #1f2937; word-break: break-word; }
+    .nc-role { font-size: 10px; color: #9ca3af; margin-top: 2px; word-break: break-word; }
+    .nc-badge {
+      padding: 3px 8px; border-radius: 6px; font-size: 9px; font-weight: 700;
+      background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .nc-badge.thinking { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+    .nc-badge.executing { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+    .nc-badge.done { background: #dcfce7; color: #065f46; border-color: #86efac; }
+    .nc-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+    .nc-metric { background: #f9fafb; border-radius: 8px; padding: 8px 10px; }
+    .nc-metric-v { font-weight: 700; font-size: 18px; color: #6366f1; font-family: "JetBrains Mono", monospace; }
+    .nc-metric-l { font-size: 9px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 1px; }
+    .nc-footer { border-top: 1px solid #f3f4f6; padding-top: 8px; }
+    .nc-type { font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.2px; font-size: 10px; }
+    .nc-action { font-size: 10px; color: #9ca3af; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── TIMELINE ── */
+    #timeline {
+      width: 380px; border-left: 2px solid #e5e7eb;
+      display: flex; flex-direction: column; background: white; flex-shrink: 0;
+    }
+    .tl-sec { display: flex; flex-direction: column; overflow: hidden; flex: 1; }
+    .tl-hd {
+      padding: 12px 16px; background: #fafbfc;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; font-weight: 700; color: #6b7280;
+      text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0;
+    }
+    .tl-cnt {
+      background: #f0f4ff; color: #6366f1;
+      padding: 3px 8px; border-radius: 5px;
+      font-size: 10px; font-weight: 700; font-family: "JetBrains Mono", monospace;
+    }
+    .tl-body { flex: 1; overflow-y: auto; padding: 8px; font-size: 11px; }
+    .tl-placeholder { color: #d1d5db; text-align: center; padding: 20px; font-size: 12px; }
+
+    .ev { display: flex; gap: 8px; padding: 7px; margin-bottom: 3px; border-radius: 8px; animation: fadeIn 0.3s; }
+    .ev:hover { background: #f9fafb; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+    .ev-icon {
+      width: 26px; height: 26px; min-height: 26px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; border-radius: 6px; font-size: 12px; background: #f3f4f6;
+    }
+    .ev-icon.ok { background: #dcfce7; color: #16a34a; }
+    .ev-icon.err { background: #fee2e2; color: #dc2626; }
+    .ev-icon.info { background: #dbeafe; color: #2563eb; }
+    .ev-icon.warn { background: #fef3c7; color: #d97706; }
+    .ev-label { font-weight: 600; color: #1f2937; font-size: 11px; }
+    .ev-meta { font-size: 10px; color: #9ca3af; margin-top: 1px; font-family: "JetBrains Mono", monospace; word-break: break-all; }
+
+    .comm {
+      background: #fafbfc; border: 1px solid #e5e7eb;
+      border-radius: 8px; padding: 9px; margin-bottom: 6px; animation: fadeIn 0.3s;
+    }
+    .comm-hd { display: flex; gap: 5px; margin-bottom: 6px; font-size: 9px; flex-wrap: wrap; align-items: center; }
+    .comm-tag { background: #f0f4ff; color: #6366f1; padding: 2px 7px; border-radius: 4px; font-weight: 700; white-space: nowrap; font-family: "JetBrains Mono", monospace; }
+    .comm-tag.to { background: #dbeafe; color: #1e40af; }
+    .comm-ts { font-size: 8px; color: #9ca3af; margin-left: auto; }
+    .comm-body { font-size: 10px; color: #4b5563; line-height: 1.5; border-left: 2px solid #ec4899; padding-left: 7px; }
+
+    /* ── DONE OVERLAY ── */
+    #done-ov {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      display: none; align-items: center; justify-content: center;
+    }
+    #done-ov.show { display: flex; }
+    .done-card {
+      background: white; border-radius: 24px; padding: 44px;
+      max-width: 480px; width: 90vw; text-align: center;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+    }
+    .done-badge {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: #dcfce7; border: 3px solid #86efac;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 20px; font-size: 40px; color: #10b981;
+    }
+    .done-h { font-size: 28px; font-weight: 900; margin-bottom: 8px; color: #1f2937; }
+    .done-p { color: #6b7280; margin-bottom: 20px; font-size: 13px; }
+    .done-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .dstat { background: #f9fafb; border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 14px; }
+    .dstat-v { font-size: 24px; font-weight: 900; color: #6366f1; font-family: "JetBrains Mono", monospace; }
+    .dstat-l { font-size: 9px; color: #9ca3af; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .done-btns { display: flex; gap: 10px; justify-content: center; }
+    .done-btn {
+      padding: 11px 24px; border: none; border-radius: 10px;
+      font-weight: 600; cursor: pointer; transition: all 0.2s;
+      display: flex; align-items: center; gap: 7px; font-size: 13px;
+    }
+    .done-btn-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
+    .done-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(99,102,241,0.4); }
+    .done-btn-secondary { background: #f9fafb; color: #6b7280; border: 1.5px solid #e5e7eb; }
+    .done-btn-secondary:hover { background: #f3f4f6; border-color: #6366f1; color: #6366f1; }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+  </style>
 </head>
 <body>
+<div id="bg"></div>
 
-<header id="hdr">
-  <div class="logo">* AGENT <b>NEXUS</b></div>
-  <div id="ws-badge"><div class="dot"></div><span id="wst">CONNECTING</span></div>
-  <div class="spin" id="spin"></div>
-  <div class="stats">
-    <div class="stat">AGENTS <b id="sa">0</b></div>
-    <div class="stat">ACTIONS <b id="sx">0</b></div>
-    <div class="stat">ITER <b id="si">0</b></div>
-    <div class="stat" id="rt-stat" style="display:none"><b id="rt">00:00</b></div>
+<!-- ── SETUP SCREEN ── -->
+<div class="screen" id="screen-setup">
+  <div class="setup-card">
+    <div class="setup-logo">
+      <div class="setup-logo-icon"><i class="fas fa-brain"></i></div>
+      <h1>Welcome</h1>
+      <p>Configure your AI before you begin</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="inp-ainame">AI Name</label>
+      <input class="form-input" id="inp-ainame" type="text" placeholder="e.g. JARVIS, HAL, Nexus…" maxlength="30">
+      <div class="form-hint">This is how your AI will be identified in the UI.</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="inp-apikey">NVIDIA API Key</label>
+      <input class="form-input key" id="inp-apikey" type="password" placeholder="nvapi-…">
+      <div class="form-hint">Get your key at <a href="https://build.nvidia.com" target="_blank">build.nvidia.com</a>. Never shared or logged.</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="inp-model">Model</label>
+      <select class="form-select" id="inp-model">
+        <option value="mistralai/mistral-small-4-119b-2603">mistralai/mistral-small-4-119b-2603 (default)</option>
+        <option value="meta/llama-3.3-70b-instruct">meta/llama-3.3-70b-instruct</option>
+        <option value="mistralai/mixtral-8x7b-instruct-v0.1">mistralai/mixtral-8x7b-instruct-v0.1</option>
+        <option value="nvidia/llama-3.1-nemotron-70b-instruct">nvidia/llama-3.1-nemotron-70b-instruct</option>
+        <option value="google/gemma-3-27b-it">google/gemma-3-27b-it</option>
+      </select>
+    </div>
+
+    <button class="btn-setup" id="btn-setup">
+      <i class="fas fa-rocket"></i> Save &amp; Launch
+    </button>
+    <div class="setup-err" id="setup-err"></div>
   </div>
-</header>
+</div>
 
-<div id="banner"></div>
+<!-- ── LANDING SCREEN ── -->
+<div class="screen hide" id="screen-land">
+  <button class="land-settings-btn" onclick="showSetup()">
+    <i class="fas fa-cog"></i> Settings
+  </button>
+  <div class="land-wrap">
+    <div class="land-badge"><i class="fas fa-bolt"></i> Autonomous Multi-Agent AI</div>
+    <h1 class="land-h" id="land-title">JARVIS</h1>
+    <p class="land-p">Describe any software goal. Watch specialized AI agents spawn, coordinate, and build it — all autonomously.</p>
 
-<main id="main">
+    <div class="shell">
+      <div class="shell-top">
+        <span><i class="fas fa-file-alt"></i> goal.txt</span>
+        <span id="char-cnt">0 chars</span>
+      </div>
+      <textarea id="ta" placeholder="Describe your software goal here…
 
-  <!-- Agents -->
-  <aside class="panel" id="ap">
-    <div class="ph">AGENTS<span class="badge" id="ac">0</span></div>
-    <div id="al"><div class="no-agents" id="noa">No agents yet.<br>Submit a goal to begin.</div></div>
-  </aside>
-
-  <!-- Feed -->
-  <section class="panel" id="fp">
-    <div class="ph">
-      ACTIVITY STREAM
-      <button id="clr" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--dim);padding:2px 10px;border-radius:4px;cursor:pointer;font-size:10px;font-family:inherit;letter-spacing:.5px">CLEAR</button>
-    </div>
-    <div id="filters">
-      <button class="fb on" data-f="all">ALL</button>
-      <button class="fb" data-f="shell">SHELL</button>
-      <button class="fb" data-f="file">FILE</button>
-      <button class="fb" data-f="agent">AGENT</button>
-      <button class="fb" data-f="msg">MSG</button>
-      <button class="fb" data-f="learn">LEARN</button>
-      <button class="fb" data-f="sys">SYS</button>
-      <button id="ascroll" class="on">v AUTO</button>
-    </div>
-    <div id="log"><div class="empty" id="fe">Activity will appear here when you run a goal.</div></div>
-  </section>
-
-  <!-- Control -->
-  <aside class="panel" id="cp">
-    <div class="cs">
-      <div class="ct">NEW GOAL</div>
-      <textarea id="gi" placeholder="e.g. Build a Python web scraper for news headlines and save to CSV&#10;&#10;Ctrl+Enter to run"></textarea>
-      <button class="btn btn-go" id="runb">&gt; START RUN</button>
-      <button class="btn btn-stop" id="stopb">[x] STOP RUN</button>
-      <div id="hint">Tip: Ctrl+Enter to run</div>
-    </div>
-    <hr class="div">
-    <div class="cs">
-      <div class="ct">RUNTIME LEARNINGS</div>
-      <div id="ll"><div class="empty" style="padding:10px 0">No learnings yet.</div></div>
-    </div>
-    <hr class="div">
-    <div class="cs">
-      <div class="ct">SESSION</div>
-      <div id="sinfo">
-        <div>Status <span id="ist" class="val">idle</span></div>
-        <div>Agents <span id="ina" class="val">0</span></div>
-        <div>Iterations <span id="ini" class="val">0</span></div>
-        <div>Actions <span id="inx" class="val">0</span></div>
+Click a preset below, or write your own — then press Ctrl+Enter or click Launch."></textarea>
+      <div class="shell-bot">
+        <span><i class="fas fa-keyboard"></i> Ctrl + Enter to launch</span>
+        <button class="btn-launch" id="btn-launch">
+          <i class="fas fa-rocket"></i> Launch Agents
+        </button>
       </div>
     </div>
-  </aside>
 
-</main>
+    <div class="chips" id="chips"></div>
+  </div>
+</div>
+
+<!-- ── APP SCREEN ── -->
+<div id="app">
+  <div id="bar">
+    <div class="bar-brand" id="bar-brand"><i class="fas fa-brain"></i> <span id="brand-name">JARVIS</span></div>
+    <div class="bar-goal" id="bar-goal">Ready</div>
+    <div class="bar-kpis">
+      <div class="kpi"><div class="kpi-v" id="k-agents">0</div><div class="kpi-l">Agents</div></div>
+      <div class="kpi"><div class="kpi-v" id="k-actions">0</div><div class="kpi-l">Actions</div></div>
+      <div class="kpi"><div class="kpi-v" id="k-time">0:00</div><div class="kpi-l">Time</div></div>
+    </div>
+    <div class="ws-tag" id="ws-tag"><span class="ws-dot"></span><span id="ws-txt">OFFLINE</span></div>
+    <button class="bar-btn danger" id="btn-stop"><i class="fas fa-stop"></i> Stop</button>
+    <button class="bar-btn" onclick="goBack()"><i class="fas fa-arrow-left"></i> Back</button>
+  </div>
+
+  <div id="workspace">
+    <div id="orch">
+      <div class="orch-hd">
+        <span><i class="fas fa-project-diagram" style="margin-right:6px;color:#6366f1"></i>Agent Orchestration</span>
+        <div class="legend">
+          <div class="lg"><div class="lg-dot" style="background:#f59e0b"></div> Thinking</div>
+          <div class="lg"><div class="lg-dot" style="background:#3b82f6"></div> Executing</div>
+          <div class="lg"><div class="lg-dot" style="background:#10b981"></div> Done</div>
+        </div>
+      </div>
+      <div id="graph">
+        <svg id="graph-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="graph-empty" id="graph-empty">
+          <i class="fas fa-sitemap"></i>
+          <div>Launch a goal to see agent orchestration</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="timeline">
+      <div class="tl-sec" style="flex:1;border-bottom:1px solid #e5e7eb;">
+        <div class="tl-hd">
+          <span><i class="fas fa-stream" style="margin-right:5px;color:#6366f1"></i>Event Stream</span>
+          <span class="tl-cnt" id="ev-cnt">0</span>
+        </div>
+        <div class="tl-body" id="ev-body">
+          <div class="tl-placeholder">Events appear here as agents work</div>
+        </div>
+      </div>
+      <div class="tl-sec" style="flex:0 0 45%;min-height:0;">
+        <div class="tl-hd">
+          <span><i class="fas fa-comments" style="margin-right:5px;color:#6366f1"></i>Agent Messages</span>
+          <span class="tl-cnt" id="comm-cnt">0</span>
+        </div>
+        <div class="tl-body" id="comm-body">
+          <div class="tl-placeholder">Agent-to-agent messages appear here</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── DONE OVERLAY ── -->
+<div id="done-ov">
+  <div class="done-card">
+    <div class="done-badge"><i class="fas fa-check"></i></div>
+    <h2 class="done-h">Mission Complete!</h2>
+    <p class="done-p" id="done-sub">All agents completed successfully.</p>
+    <div class="done-stats">
+      <div class="dstat"><div class="dstat-v" id="d-ag">0</div><div class="dstat-l">Agents</div></div>
+      <div class="dstat"><div class="dstat-v" id="d-act">0</div><div class="dstat-l">Actions</div></div>
+      <div class="dstat"><div class="dstat-v" id="d-tm">0s</div><div class="dstat-l">Runtime</div></div>
+    </div>
+    <div class="done-btns">
+      <button class="done-btn done-btn-primary" onclick="runAgain()"><i class="fas fa-redo"></i> Run Again</button>
+      <button class="done-btn done-btn-secondary" onclick="closeDone()"><i class="fas fa-times"></i> Close</button>
+    </div>
+  </div>
+</div>
 
 <script>
-// ── State ─────────────────────────────────────────────────────────────────────
-const S = {
-  ws: null, running: false,
-  agents: {}, logs: [], learnings: [],
-  stats: {iters: 0, actions: 0},
-  filter: 'all', autoScroll: true,
-  startTime: null, timer: null, lid: 0,
-};
+  // ── State ──────────────────────────────────────────────────────────────────
+  let ws = null;
+  let clockTimer = null;
+  let startTime = null;
+  let evCount = 0, commCount = 0, actionCount = 0;
+  const nodes = {};
+  const commPaths = {};
+  let aiName = 'JARVIS';
+  let currentGoal = '';
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
-function connect() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  S.ws = new WebSocket(`${proto}//${location.host}/ws`);
-  S.ws.onopen = () => badge('live', 'LIVE');
-  S.ws.onclose = () => { badge('', 'OFFLINE'); setTimeout(connect, 3000); };
-  S.ws.onerror = () => badge('err', 'ERROR');
-  S.ws.onmessage = e => { try { onEvent(JSON.parse(e.data)); } catch {} };
-}
+  const PRESETS = [
+    { label: 'Collaborative Code Editor', icon: 'fa-code',
+      text: 'Build a real-time collaborative code editor with Flask backend, Flask-SocketIO for live sync, Monaco Editor with multi-user cursor tracking, syntax highlighting, room system with shareable links, and dark professional UI.' },
+    { label: 'REST API + Auth', icon: 'fa-server',
+      text: 'Create a FastAPI REST backend with full CRUD for a Task Manager, PostgreSQL + SQLAlchemy, JWT authentication with refresh token rotation, role-based access control, auto-generated Swagger docs, and pytest test suite.' },
+    { label: 'Data Pipeline', icon: 'fa-chart-bar',
+      text: 'Build an automated weather data pipeline that fetches hourly data from Open-Meteo, processes with pandas, stores in SQLite, generates daily matplotlib charts, and schedules with APScheduler.' },
+    { label: 'AI Chatbot', icon: 'fa-robot',
+      text: 'Build an AI support chatbot with FastAPI backend, real-time streaming via SSE, chat UI with conversation history, typing indicator, markdown + code block rendering in responses.' },
+  ];
 
-function badge(cls, txt) {
-  const b = document.getElementById('ws-badge');
-  b.className = cls;
-  document.getElementById('wst').textContent = txt;
-}
-
-// ── Events ────────────────────────────────────────────────────────────────────
-function onEvent(ev) {
-  const t = ev.type;
-  if (t === 'ping') return;
-
-  if (t === 'connected') {
-    if (ev.learnings) ev.learnings.forEach(addLearning);
-    if (ev.agents) Object.entries(ev.agents).forEach(([n,a]) => { S.agents[n] = a; });
-    if (ev.agents && Object.keys(ev.agents).length) renderAgents();
-    if (ev.running) setRunning(true);
-    return;
-  }
-  if (t === 'run_start') {
-    setRunning(true);
-    hideBanner();
-    addLog({type:'system', ts:ev.ts, agent:'system', cmd:`>  ${ev.goal}`});
-    return;
-  }
-  if (t === 'run_complete') {
-    setRunning(false);
-    const ok = ev.success;
-    addLog({type:'system', ts:ev.ts, agent:'system',
-      cmd: ok ? `[OK] Done - ${ev.iterations} iters - ${ev.actions} actions - ${ev.duration}s`
-              : `[x] Stopped - ${ev.iterations} iters - ${ev.actions} actions`});
-    showBanner(ok ? 'success' : 'stopped',
-      ok ? `[OK] Goal complete in ${ev.duration}s` : '[x] Run stopped');
-    return;
-  }
-  if (t === 'iteration') {
-    S.stats.iters = ev.iteration;
-    syncStats();
-    addLog({type:'iteration', ts:ev.ts, agent:'-', cmd:`-- Iteration ${ev.iteration} --`});
-    return;
-  }
-  if (t === 'agent_update') {
-    if (!S.agents[ev.agent]) S.agents[ev.agent] = {};
-    Object.assign(S.agents[ev.agent], {
-      status: ev.status,
-      action_count: ev.action_count,
-      current_action: ev.current_action,
-    });
-    renderAgents(); syncStats(); return;
-  }
-  if (t === 'agent_spawn') {
-    if (!S.agents[ev.agent]) S.agents[ev.agent] = {status:'idle', action_count:0};
-    renderAgents();
-    addLog({type:'spawn_agent', ts:ev.ts, agent:ev.spawned_by||'system',
-            cmd:`Agent "${ev.agent}" spawned`});
-    return;
-  }
-  if (t === 'agent_done') {
-    if (S.agents[ev.agent]) S.agents[ev.agent].status = 'done';
-    renderAgents(); return;
-  }
-  if (t === 'action_result') {
-    S.stats.actions++;
-    syncStats();
-    addLog({type:ev.action_type, ts:ev.ts, agent:ev.agent,
-            cmd:ev.cmd||ev.action_type, result:ev.result});
-    return;
-  }
-  if (t === 'learning') {
-    addLearning(ev.fact);
-    addLog({type:'learn', ts:ev.ts, agent:ev.agent||'system', cmd:ev.fact});
-    return;
-  }
-  if (t === 'error') {
-    addLog({type:'error', ts:ev.ts, agent:ev.agent||'system', cmd:ev.message||''});
-    return;
-  }
-  if (t === 'parse_error') {
-    addLog({type:'parse_error', ts:ev.ts, agent:ev.agent||'system',
-            cmd:`Parse error: ${(ev.preview||'').slice(0,120)}`});
-    return;
-  }
-}
-
-// ── Agents ────────────────────────────────────────────────────────────────────
-function renderAgents() {
-  const list = document.getElementById('al');
-  const noa = document.getElementById('noa');
-  const names = Object.keys(S.agents);
-  const cnt = names.length;
-
-  document.getElementById('ac').textContent = cnt;
-  document.getElementById('sa').textContent = cnt;
-  document.getElementById('ina').textContent = cnt;
-
-  if (!cnt) { noa && (noa.style.display = ''); return; }
-  if (noa) noa.style.display = 'none';
-
-  names.forEach(name => {
-    const a = S.agents[name];
-    const st = a.status || 'idle';
-    let card = document.getElementById(`ac-${name}`);
-    if (!card) {
-      card = document.createElement('div');
-      card.id = `ac-${name}`;
-      list.appendChild(card);
+  // ── Init ───────────────────────────────────────────────────────────────────
+  window.addEventListener('load', async () => {
+    buildChips();
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      aiName = cfg.ai_name || 'JARVIS';
+      if (cfg.has_api_key) {
+        applyAiName(aiName);
+        // Pre-fill setup form in case user opens settings
+        document.getElementById('inp-ainame').value = aiName;
+        showLanding();
+      } else {
+        document.getElementById('inp-ainame').value = aiName;
+        // stay on setup
+      }
+    } catch {
+      // server unreachable — stay on setup
     }
-    card.className = `ac ${st}`;
-    card.innerHTML = `
-      <div class="an s-${st}"><div class="sd"></div>${esc(name)}</div>
-      <div class="ast">${st.toUpperCase()}</div>
-      <div class="ainfo"><span>* ${a.action_count||0} actions</span></div>
-      ${a.current_action ? `<div class="cur-action">${esc(a.current_action)}</div>` : ''}
-    `;
   });
-}
 
-// ── Log ───────────────────────────────────────────────────────────────────────
-const FMAP = {
-  all:   () => true,
-  shell: e => ['shell','shell_background','shell_wait'].includes(e.type),
-  file:  e => ['file_read','file_write','file_list'].includes(e.type),
-  agent: e => ['spawn_agent','done','iteration'].includes(e.type),
-  msg:   e => e.type === 'message',
-  learn: e => e.type === 'learn',
-  sys:   e => ['system','error','parse_error'].includes(e.type),
-};
-
-function addLog(entry) {
-  entry.id = S.lid++;
-  S.logs.push(entry);
-  if (S.logs.length > 2000) S.logs.splice(0, 200);
-
-  const logEl = document.getElementById('log');
-  const fe = document.getElementById('fe');
-  if (fe) fe.remove();
-
-  const fn = FMAP[S.filter] || FMAP.all;
-  if (!fn(entry)) return;
-
-  logEl.appendChild(mkEntry(entry));
-  if (S.autoScroll) logEl.scrollTop = logEl.scrollHeight;
-}
-
-function mkEntry(e) {
-  const d = document.createElement('div');
-  d.className = 'le';
-  d.dataset.id = e.id;
-  const cls = `t-${(e.type||'').replace(/[^a-z0-9_]/g,'_')}`;
-  const lbl = (e.type||'').replace(/_/g,' ').toUpperCase();
-  let h = `<div class="lm">
-    <span class="lts">${esc(e.ts||'')}</span>
-    <span class="lag">${esc(e.agent||'')}</span>
-    <span class="lt ${cls}">${lbl}</span>
-  </div>
-  <div class="lcmd">${esc(String(e.cmd||''))}</div>`;
-  if (e.result) {
-    const long = e.result.length > 300;
-    h += `<div class="lres${long?'':' open'}" id="lr-${e.id}">${esc(e.result)}</div>`;
-    if (long) h += `<span class="ltog" onclick="tog(${e.id})">v show more</span>`;
-  }
-  d.innerHTML = h;
-  return d;
-}
-
-function tog(id) {
-  const el = document.getElementById(`lr-${id}`);
-  if (!el) return;
-  el.classList.toggle('open');
-  const t = el.nextElementSibling;
-  if (t) t.textContent = el.classList.contains('open') ? '^ show less' : 'v show more';
-}
-
-function applyFilter(f) {
-  S.filter = f;
-  document.querySelectorAll('.fb').forEach(b => b.classList.toggle('on', b.dataset.f === f));
-  const logEl = document.getElementById('log');
-  logEl.innerHTML = '';
-  const fn = FMAP[f] || FMAP.all;
-  const filtered = S.logs.filter(fn);
-  if (!filtered.length) {
-    logEl.innerHTML = `<div class="empty">${S.logs.length ? 'No entries match this filter.' : 'Activity will appear here when you run a goal.'}</div>`;
-  } else {
-    filtered.forEach(e => logEl.appendChild(mkEntry(e)));
-  }
-  if (S.autoScroll) logEl.scrollTop = logEl.scrollHeight;
-}
-
-// ── Learnings ─────────────────────────────────────────────────────────────────
-function addLearning(fact) {
-  if (!fact || S.learnings.includes(fact)) return;
-  S.learnings.push(fact);
-  const ll = document.getElementById('ll');
-  const em = ll.querySelector('.empty');
-  if (em) em.remove();
-  const d = document.createElement('div');
-  d.className = 'li';
-  d.textContent = fact;
-  ll.appendChild(d);
-}
-
-// ── Stats ─────────────────────────────────────────────────────────────────────
-function syncStats() {
-  document.getElementById('sx').textContent = S.stats.actions;
-  document.getElementById('si').textContent = S.stats.iters;
-  document.getElementById('inx').textContent = S.stats.actions;
-  document.getElementById('ini').textContent = S.stats.iters;
-}
-
-function setRunning(v) {
-  S.running = v;
-  document.body.classList.toggle('running', v);
-  document.getElementById('runb').disabled = v;
-  document.getElementById('stopb').disabled = !v;
-  const ist = document.getElementById('ist');
-  ist.textContent = v ? 'running' : 'idle';
-  ist.style.color = v ? 'var(--green)' : 'var(--muted)';
-  if (v) {
-    S.startTime = Date.now();
-    document.getElementById('rt-stat').style.display = '';
-    S.timer = setInterval(() => {
-      const e = Math.floor((Date.now() - S.startTime) / 1000);
-      document.getElementById('rt').textContent =
-        `${String(Math.floor(e/60)).padStart(2,'0')}:${String(e%60).padStart(2,'0')}`;
-    }, 1000);
-  } else {
-    clearInterval(S.timer);
-  }
-}
-
-function showBanner(cls, msg) {
-  const b = document.getElementById('banner');
-  b.className = cls; b.textContent = msg; b.style.display = 'block';
-}
-function hideBanner() {
-  document.getElementById('banner').style.display = 'none';
-}
-
-// ── Buttons ───────────────────────────────────────────────────────────────────
-document.getElementById('runb').addEventListener('click', async () => {
-  const goal = document.getElementById('gi').value.trim();
-  if (!goal) { document.getElementById('gi').focus(); return; }
-
-  // Reset
-  S.agents = {}; S.logs = []; S.learnings = []; S.stats = {iters:0, actions:0}; S.lid = 0;
-  document.getElementById('al').innerHTML = '<div class="no-agents" id="noa">Starting…</div>';
-  document.getElementById('log').innerHTML = '';
-  document.getElementById('ll').innerHTML = '<div class="empty" style="padding:10px 0">No learnings yet.</div>';
-  syncStats(); hideBanner();
-
-  try {
-    const res = await fetch('/api/run', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({goal}),
+  function buildChips() {
+    const wrap = document.getElementById('chips');
+    PRESETS.forEach((p, i) => {
+      const d = document.createElement('div');
+      d.className = 'chip' + (i === 0 ? ' on' : '');
+      d.innerHTML = `<i class="fas ${p.icon}"></i> ${p.label}`;
+      d.onclick = () => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+        d.classList.add('on');
+        document.getElementById('ta').value = p.text;
+        document.getElementById('ta').dispatchEvent(new Event('input'));
+      };
+      wrap.appendChild(d);
     });
-    if (!res.ok) { const e = await res.json(); alert(e.error||'Failed to start'); }
-  } catch(e) { alert('Connection error: ' + e.message); }
-});
-
-document.getElementById('stopb').addEventListener('click', () => {
-  fetch('/api/stop', {method:'POST'});
-});
-
-document.getElementById('clr').addEventListener('click', () => {
-  S.logs = []; S.lid = 0;
-  document.getElementById('log').innerHTML = '<div class="empty" id="fe">Activity will appear here when you run a goal.</div>';
-});
-
-document.querySelectorAll('.fb').forEach(b => {
-  if (b.dataset.f) b.addEventListener('click', () => applyFilter(b.dataset.f));
-});
-
-const asBtn = document.getElementById('ascroll');
-asBtn.addEventListener('click', () => {
-  S.autoScroll = !S.autoScroll;
-  asBtn.textContent = S.autoScroll ? 'v AUTO' : '^ MANUAL';
-  asBtn.classList.toggle('on', S.autoScroll);
-  if (S.autoScroll) {
-    const l = document.getElementById('log');
-    l.scrollTop = l.scrollHeight;
+    // Set first preset text
+    document.getElementById('ta').value = PRESETS[0].text;
+    document.getElementById('char-cnt').textContent = PRESETS[0].text.length + ' chars';
   }
-});
 
-document.getElementById('log').addEventListener('scroll', function() {
-  if (this.scrollHeight - this.scrollTop - this.clientHeight > 60 && S.autoScroll) {
-    S.autoScroll = false;
-    asBtn.textContent = '^ MANUAL';
-    asBtn.classList.remove('on');
+  function applyAiName(name) {
+    aiName = name;
+    document.getElementById('land-title').textContent = name;
+    document.getElementById('brand-name').textContent = name;
+    document.title = name + ' — Multi-Agent AI Orchestrator';
   }
-});
 
-document.getElementById('gi').addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.ctrlKey) document.getElementById('runb').click();
-});
+  // ── Screens ────────────────────────────────────────────────────────────────
+  function showSetup() {
+    document.getElementById('screen-setup').classList.remove('hide');
+    document.getElementById('screen-land').classList.add('hide');
+    document.getElementById('app').classList.remove('in');
+  }
 
-// ── Utils ─────────────────────────────────────────────────────────────────────
-function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+  function showLanding() {
+    document.getElementById('screen-setup').classList.add('hide');
+    document.getElementById('screen-land').classList.remove('hide');
+    document.getElementById('app').classList.remove('in');
+  }
 
-// Init
-document.getElementById('runb').disabled = false;
-document.getElementById('stopb').disabled = true;
-connect();
+  function showApp() {
+    document.getElementById('screen-land').classList.add('hide');
+    document.getElementById('app').classList.add('in');
+  }
+
+  function goBack() {
+    stopWs();
+    showLanding();
+    clearInterval(clockTimer);
+  }
+
+  // ── Setup form ─────────────────────────────────────────────────────────────
+  document.getElementById('btn-setup').onclick = async () => {
+    const btn = document.getElementById('btn-setup');
+    const errEl = document.getElementById('setup-err');
+    const name = document.getElementById('inp-ainame').value.trim() || 'JARVIS';
+    const key = document.getElementById('inp-apikey').value.trim();
+    const model = document.getElementById('inp-model').value;
+
+    if (!key) { showErr('Please enter your NVIDIA API key.'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+    errEl.classList.remove('show');
+
+    try {
+      const res = await fetch('/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_name: name, api_key: key, model }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showErr(data.error || 'Setup failed.'); return; }
+      applyAiName(data.ai_name || name);
+      showLanding();
+    } catch (e) {
+      showErr('Could not connect to server: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-rocket"></i> Save &amp; Launch';
+    }
+  };
+
+  function showErr(msg) {
+    const el = document.getElementById('setup-err');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+
+  // ── Landing ────────────────────────────────────────────────────────────────
+  const ta = document.getElementById('ta');
+  ta.addEventListener('input', () => {
+    document.getElementById('char-cnt').textContent = ta.value.length + ' chars';
+  });
+  ta.addEventListener('keydown', e => { if (e.ctrlKey && e.key === 'Enter') launch(); });
+  document.getElementById('btn-launch').onclick = launch;
+
+  async function launch() {
+    const goal = ta.value.trim();
+    if (!goal) return;
+    currentGoal = goal;
+
+    try {
+      const res = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error && data.error.includes('API key')) { showSetup(); return; }
+        alert(data.error || 'Failed to start.'); return;
+      }
+    } catch (e) {
+      alert('Could not reach server: ' + e.message); return;
+    }
+
+    resetAppState();
+    showApp();
+    document.getElementById('bar-goal').textContent = goal.slice(0, 80);
+    connectWs();
+  }
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+  function connectWs() {
+    stopWs();
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => {
+      document.getElementById('ws-tag').classList.add('live');
+      document.getElementById('ws-txt').textContent = 'LIVE';
+      document.getElementById('btn-stop').classList.add('on');
+    };
+
+    ws.onclose = () => {
+      document.getElementById('ws-tag').classList.remove('live');
+      document.getElementById('ws-txt').textContent = 'OFFLINE';
+      document.getElementById('btn-stop').classList.remove('on');
+    };
+
+    ws.onmessage = e => handleEvent(JSON.parse(e.data));
+  }
+
+  function stopWs() {
+    if (ws) { ws.close(); ws = null; }
+  }
+
+  // ── Event handler ──────────────────────────────────────────────────────────
+  function handleEvent(ev) {
+    const t = ev.type;
+
+    if (t === 'ping' || t === 'connected') {
+      if (t === 'connected' && ev.running) {
+        // Already running — restore existing agents
+        Object.entries(ev.agents || {}).forEach(([name, info]) => {
+          ensureNode(name);
+          setStatus(name, info.status || 'idle');
+        });
+      }
+      return;
+    }
+
+    if (t === 'run_start') {
+      startClock();
+      addEv('fa-play', `Run started`, ev.goal ? ev.goal.slice(0, 60) : '', 'info');
+      document.getElementById('graph-empty') && document.getElementById('graph-empty').remove();
+      return;
+    }
+
+    if (t === 'iteration') {
+      addEv('fa-redo', `Iteration ${ev.iteration}`, '', 'info');
+      return;
+    }
+
+    if (t === 'agent_spawn') {
+      ensureNode(ev.agent);
+      addEv('fa-robot', `Spawned: ${ev.agent}`, `by ${ev.spawned_by || '?'}`, 'info');
+      if (ev.spawned_by) drawConnection(ev.spawned_by, ev.agent);
+      return;
+    }
+
+    if (t === 'agent_update') {
+      ensureNode(ev.agent);
+      setStatus(ev.agent, ev.status || 'idle');
+      if (ev.current_action) setCurrentAction(ev.agent, ev.current_action);
+      if (ev.action_count !== undefined) setActionCount(ev.agent, ev.action_count);
+      return;
+    }
+
+    if (t === 'agent_done') {
+      setStatus(ev.agent, 'done');
+      addEv('fa-check-circle', `${ev.agent} done`, '', 'ok');
+      return;
+    }
+
+    if (t === 'action_result') {
+      const atype = ev.action_type || '';
+      const cmd = (ev.cmd || '').slice(0, 80);
+      const result = (ev.result || '').slice(0, 200);
+
+      if (atype === 'message') {
+        // Parse from→to from cmd string like "agent → other: msg"
+        const parts = cmd.match(/^(.+?)\s*→\s*(.+?):\s*(.*)$/);
+        if (parts) addComm(parts[1].trim(), parts[2].trim(), parts[3].trim(), ev.ts);
+        else addComm(ev.agent || '?', '?', cmd, ev.ts);
+      } else if (atype === 'done') {
+        // no-op, handled by run_complete
+      } else {
+        const icon = iconForAction(atype);
+        addEv(icon, `${ev.agent}: ${atype}`, cmd + (result ? ' → ' + result : ''));
+      }
+      return;
+    }
+
+    if (t === 'learning') {
+      addEv('fa-lightbulb', 'Learned', ev.fact || '', 'warn');
+      return;
+    }
+
+    if (t === 'self_evaluate') {
+      addEv('fa-brain', `${ev.agent}: self-eval`, (ev.feedback || '').slice(0, 120), 'info');
+      return;
+    }
+
+    if (t === 'prompt_update') {
+      addEv('fa-edit', `${ev.agent}: prompt update`, (ev.addon || '').slice(0, 100), 'info');
+      return;
+    }
+
+    if (t === 'validation_result') {
+      const icon = ev.passed ? 'fa-check' : 'fa-times';
+      const cls = ev.passed ? 'ok' : 'err';
+      addEv(icon, `Validate ${ev.action_type}: ${ev.passed ? 'pass' : 'fail'}`, (ev.reason || '').slice(0, 100), cls);
+      return;
+    }
+
+    if (t === 'error') {
+      addEv('fa-exclamation-circle', `Error: ${ev.agent}`, (ev.message || '').slice(0, 200), 'err');
+      return;
+    }
+
+    if (t === 'parse_error') {
+      addEv('fa-exclamation-triangle', `Parse error: ${ev.agent}`, (ev.preview || '').slice(0, 100), 'err');
+      return;
+    }
+
+    if (t === 'run_complete') {
+      clearInterval(clockTimer);
+      document.getElementById('btn-stop').classList.remove('on');
+      const sec = Math.round(ev.duration || 0);
+      document.getElementById('d-ag').textContent = Object.keys(nodes).length;
+      document.getElementById('d-act').textContent = ev.actions || actionCount;
+      document.getElementById('d-tm').textContent = sec + 's';
+      const status = ev.success ? 'Completed successfully' : 'Stopped';
+      document.getElementById('done-sub').textContent =
+        `${Object.keys(nodes).length} agents · ${ev.actions || actionCount} actions · ${sec}s · ${status}`;
+      document.getElementById('done-ov').classList.add('show');
+      return;
+    }
+  }
+
+  function iconForAction(atype) {
+    const map = {
+      shell: 'fa-terminal', shell_background: 'fa-terminal', shell_wait: 'fa-clock',
+      file_read: 'fa-file-alt', file_write: 'fa-save', file_list: 'fa-folder-open',
+      spawn_agent: 'fa-robot', learn: 'fa-lightbulb', done: 'fa-flag-checkered',
+    };
+    return map[atype] || 'fa-bolt';
+  }
+
+  // ── App state ──────────────────────────────────────────────────────────────
+  function resetAppState() {
+    clearInterval(clockTimer);
+    evCount = 0; commCount = 0; actionCount = 0;
+    document.getElementById('k-agents').textContent = '0';
+    document.getElementById('k-actions').textContent = '0';
+    document.getElementById('k-time').textContent = '0:00';
+    document.getElementById('ev-cnt').textContent = '0';
+    document.getElementById('comm-cnt').textContent = '0';
+    document.getElementById('ev-body').innerHTML = '<div class="tl-placeholder">Events appear here as agents work</div>';
+    document.getElementById('comm-body').innerHTML = '<div class="tl-placeholder">Agent-to-agent messages appear here</div>';
+
+    const graph = document.getElementById('graph');
+    graph.innerHTML = `<svg id="graph-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="graph-empty" id="graph-empty"><i class="fas fa-sitemap"></i><div>Agents will appear here</div></div>`;
+    document.getElementById('graph-svg').addEventListener('resize', redrawConnections);
+
+    Object.keys(commPaths).forEach(k => delete commPaths[k]);
+    Object.keys(nodes).forEach(k => delete nodes[k]);
+
+    document.getElementById('ws-tag').classList.remove('live');
+    document.getElementById('ws-txt').textContent = 'OFFLINE';
+    document.getElementById('done-ov').classList.remove('show');
+  }
+
+  function startClock() {
+    startTime = Date.now();
+    clearInterval(clockTimer);
+    clockTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - startTime) / 1000);
+      document.getElementById('k-time').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }, 500);
+  }
+
+  // ── Agent graph ────────────────────────────────────────────────────────────
+  const AGENT_ICONS = {
+    supervisor: 'fa-brain', plan: 'fa-sitemap', plann: 'fa-sitemap',
+    back: 'fa-server', front: 'fa-code', db: 'fa-database',
+    test: 'fa-flask', devops: 'fa-cloud', deploy: 'fa-rocket',
+    default: 'fa-robot',
+  };
+
+  function getAgentIcon(name) {
+    const lower = name.toLowerCase();
+    for (const [k, v] of Object.entries(AGENT_ICONS)) {
+      if (lower.includes(k)) return v;
+    }
+    return AGENT_ICONS.default;
+  }
+
+  function getAgentRow(name) {
+    if (name === 'supervisor') return 0;
+    // Assign rows based on when agents appear
+    const existing = Object.keys(nodes).filter(n => n !== 'supervisor');
+    const idx = existing.indexOf(name);
+    if (idx < 3) return 1;
+    if (idx < 7) return 2;
+    return 3;
+  }
+
+  function getOrCreateRow(rowId) {
+    const g = document.getElementById('graph');
+    let row = g.querySelector(`[data-row="${rowId}"]`);
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'graph-row';
+      row.setAttribute('data-row', rowId);
+      // Insert in order
+      const existing = Array.from(g.querySelectorAll('.graph-row'));
+      const insertBefore = existing.find(r => parseInt(r.getAttribute('data-row')) > rowId);
+      if (insertBefore) g.insertBefore(row, insertBefore);
+      else g.appendChild(row);
+    }
+    return row;
+  }
+
+  function ensureNode(name) {
+    if (nodes[name]) return;
+    const emptyEl = document.getElementById('graph-empty');
+    if (emptyEl) emptyEl.remove();
+
+    const rowId = getAgentRow(name);
+    const row = getOrCreateRow(rowId);
+    const isSuper = name === 'supervisor';
+    const icon = getAgentIcon(name);
+    const role = isSuper ? 'Master Orchestrator' : 'Worker Agent';
+
+    const div = document.createElement('div');
+    div.className = 'node';
+    div.id = 'n-' + name;
+    div.innerHTML = `<div class="node-card ${isSuper ? 'is-sup' : ''}" id="card-${name}">
+      <div class="nc-top">
+        <div class="nc-icon"><i class="fas ${icon}"></i></div>
+        <div class="nc-info">
+          <div class="nc-name">${name}</div>
+          <div class="nc-role">${role}</div>
+        </div>
+        <div class="nc-badge" id="badge-${name}">Idle</div>
+      </div>
+      <div class="nc-metrics">
+        <div class="nc-metric">
+          <div class="nc-metric-v" id="acts-${name}">0</div>
+          <div class="nc-metric-l">Actions</div>
+        </div>
+        <div class="nc-metric">
+          <div class="nc-metric-v" id="time-${name}">0s</div>
+          <div class="nc-metric-l">Time</div>
+        </div>
+      </div>
+      <div class="nc-footer">
+        <span class="nc-type">${isSuper ? '🔷 MASTER' : '🔹 WORKER'}</span>
+        <div class="nc-action" id="act-${name}"></div>
+      </div>
+    </div>`;
+    row.appendChild(div);
+    nodes[name] = { startTime: Date.now(), timer: null };
+
+    // Live timer
+    nodes[name].timer = setInterval(() => {
+      const el = document.getElementById(`time-${name}`);
+      if (el) el.textContent = Math.floor((Date.now() - nodes[name].startTime) / 1000) + 's';
+    }, 1000);
+
+    document.getElementById('k-agents').textContent = Object.keys(nodes).length;
+  }
+
+  function setStatus(name, status) {
+    const card = document.getElementById('card-' + name);
+    const badge = document.getElementById('badge-' + name);
+    if (!card) return;
+    const cls = status.toLowerCase();
+    const isSuper = name === 'supervisor';
+    card.className = `node-card ${cls} ${isSuper ? 'is-sup' : ''}`;
+    if (badge) {
+      badge.className = 'nc-badge ' + cls;
+      badge.textContent = cls.charAt(0).toUpperCase() + cls.slice(1);
+    }
+  }
+
+  function setCurrentAction(name, action) {
+    const el = document.getElementById('act-' + name);
+    if (el) el.textContent = action;
+  }
+
+  function setActionCount(name, count) {
+    const el = document.getElementById('acts-' + name);
+    if (el) {
+      el.textContent = count;
+      actionCount = Object.values(nodes).reduce((s, _) => {
+        // sum from DOM
+        return s;
+      }, 0);
+      // Just track via KPI separately
+      document.getElementById('k-actions').textContent = count; // last update wins; good enough
+    }
+  }
+
+  // ── SVG connections ────────────────────────────────────────────────────────
+  function getNodeCenter(name) {
+    const el = document.getElementById('n-' + name);
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const graph = document.getElementById('graph');
+    const gRect = graph.getBoundingClientRect();
+    return {
+      x: rect.left - gRect.left + rect.width / 2 + graph.scrollLeft,
+      y: rect.top - gRect.top + rect.height / 2 + graph.scrollTop,
+    };
+  }
+
+  function drawConnection(fromName, toName, color = '#6366f1') {
+    const from = getNodeCenter(fromName);
+    const to = getNodeCenter(toName);
+    if (!from || !to) return;
+    const svg = document.getElementById('graph-svg');
+    const key = `${fromName}-${toName}`;
+    let line = document.getElementById(`line-${key}`);
+    if (!line) {
+      line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('id', `line-${key}`);
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', '2');
+      line.setAttribute('stroke-dasharray', '5,4');
+      line.style.opacity = '0.5';
+      svg.appendChild(line);
+      commPaths[key] = { fromName, toName, color };
+    }
+    line.setAttribute('x1', from.x); line.setAttribute('y1', from.y);
+    line.setAttribute('x2', to.x); line.setAttribute('y2', to.y);
+  }
+
+  function redrawConnections() {
+    Object.values(commPaths).forEach(({ fromName, toName, color }) => drawConnection(fromName, toName, color));
+  }
+
+  function animatePacket(fromName, toName) {
+    const from = getNodeCenter(fromName);
+    const to = getNodeCenter(toName);
+    if (!from || !to) return;
+    const svg = document.getElementById('graph-svg');
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('r', '6');
+    circle.setAttribute('fill', '#ec4899');
+    circle.setAttribute('filter', 'drop-shadow(0 0 6px #ec4899)');
+    svg.appendChild(circle);
+    let start = null;
+    function anim(ts) {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / 800, 1);
+      circle.setAttribute('cx', from.x + (to.x - from.x) * p);
+      circle.setAttribute('cy', from.y + (to.y - from.y) * p);
+      if (p < 1) requestAnimationFrame(anim);
+      else svg.removeChild(circle);
+    }
+    requestAnimationFrame(anim);
+  }
+
+  document.getElementById('graph').addEventListener('scroll', redrawConnections);
+
+  // ── Timeline helpers ───────────────────────────────────────────────────────
+  function addEv(icon, label, meta, cls = '') {
+    const body = document.getElementById('ev-body');
+    const ph = body.querySelector('.tl-placeholder');
+    if (ph) ph.remove();
+    evCount++;
+    document.getElementById('ev-cnt').textContent = evCount;
+    const d = document.createElement('div');
+    d.className = 'ev';
+    d.innerHTML = `<div class="ev-icon ${cls}"><i class="fas ${icon}"></i></div>
+      <div><div class="ev-label">${label}</div>${meta ? `<div class="ev-meta">${escHtml(meta)}</div>` : ''}</div>`;
+    body.appendChild(d);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  function addComm(from, to, msg, ts) {
+    const body = document.getElementById('comm-body');
+    const ph = body.querySelector('.tl-placeholder');
+    if (ph) ph.remove();
+    commCount++;
+    document.getElementById('comm-cnt').textContent = commCount;
+    const d = document.createElement('div');
+    d.className = 'comm';
+    d.innerHTML = `<div class="comm-hd">
+      <span class="comm-tag">${escHtml(from)}</span>
+      <i class="fas fa-arrow-right" style="color:#ec4899;font-size:9px"></i>
+      <span class="comm-tag to">${escHtml(to)}</span>
+      ${ts ? `<span class="comm-ts">${ts}</span>` : ''}
+    </div>
+    <div class="comm-body">${escHtml(msg)}</div>`;
+    body.appendChild(d);
+    body.scrollTop = body.scrollHeight;
+
+    // Draw animated packet
+    requestAnimationFrame(() => {
+      drawConnection(from, to, '#ec4899');
+      animatePacket(from, to);
+    });
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ── Controls ───────────────────────────────────────────────────────────────
+  document.getElementById('btn-stop').onclick = async () => {
+    await fetch('/api/stop', { method: 'POST' });
+    document.getElementById('btn-stop').classList.remove('on');
+    clearInterval(clockTimer);
+  };
+
+  function closeDone() { document.getElementById('done-ov').classList.remove('show'); }
+  function runAgain() { closeDone(); goBack(); }
 </script>
 </body>
 </html>
